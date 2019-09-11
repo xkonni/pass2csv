@@ -10,16 +10,16 @@ import gnupg
 
 class CSVExporter():
 
-    def __init__(self, kpx_format):
+    def __init__(self, csv_format=False):
 
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
         # Set to True to allow for alternate password csv to be created
         # See README for differences
-        self.kpx_format = kpx_format
+        self.csv_format = csv_format
 
-        if self.kpx_format:
+        if self.csv_format:
             # A list of possible fields (in order) that could be converted to login fields
             self.login_fields = ['login', 'user', 'username', 'email']
             # Set to True to extract url fields
@@ -27,7 +27,7 @@ class CSVExporter():
             # A regular expression list of lines that should be excluded from the notes field
             self.exclude_rows = ['^---$', '^autotype ?: ?']
 
-        self.logger.info("Using KPX format: %s", self.kpx_format)
+        self.logger.info("Using CSV format: %s", self.csv_format)
 
     def traverse(self, path):
 
@@ -95,22 +95,30 @@ class CSVExporter():
         # Perform if/else in case there are no notes for a field
         notes = split_data[1] if len(split_data) > 1 else ""
         self.logger.info("Processing %s", name)
-        if self.kpx_format:
-            # We are using the advanced format; try extracting user and url
+        if self.csv_format == "KPX":
+            # We are using an advanced format; try extracting user and url
             user, url, notes = self.getMetadata(notes)
             return [group, name, user, password, url, notes]
+        elif self.csv_format == "LP":
+            # We are using an advanced format; try extracting user and url
+            user, url, notes = self.getMetadata(notes)
+            return [url, user, password, notes, name, group, 0 ]
         else:
             # We are not using KPX format; just use notes
             return [group, name, password, notes]
 
 
-def main(kpx_format, gpgbinary, use_agent, pass_path):
+def main(csv_format, gpgbinary, use_agent, pass_path):
     """Main script entrypoint."""
 
-    exporter = CSVExporter(kpx_format)
+    exporter = CSVExporter(csv_format)
     gpg = gnupg.GPG(use_agent=use_agent, gpgbinary=gpgbinary)
     gpg.encoding = 'utf-8'
     csv_data = []
+    if csv_format == "KPX":
+        csv_data.append(["group", "name", "user", "password", "url", "notes"])
+    elif csv_format == "LP":
+        csv_data.append(["url", "username", "password", "extra", "name", "grouping", "fav" ])
     for file_path in exporter.traverse(pass_path):
         if os.path.splitext(file_path)[1] == '.gpg':
             with open(file_path, 'rb') as f:
@@ -132,32 +140,23 @@ class OptionsParser(ArgumentParser):
         super().__init__(*args, **kwargs)
 
         self.add_argument(
-            'pass_path',
-            metavar='path',
-            type=str,
+            'pass_path', metavar='path', type=str,
             help="Path to the PasswordStore folder to use",
         )
 
         self.add_argument(
-            '-a', '--agent',
-            action='store_true',
+            '-a', '--agent', action='store_true', dest='use_agent',
             help="Use this option to ask gpg to use it's auth agent",
-            dest='use_agent',
         )
 
         self.add_argument(
-            '-b', '--gpgbinary',
-            type=str,
-            help="Path to the gpg binary you wish to use",
-            dest='gpgbinary',
-            default="gpg"
+            '-b', '--gpgbinary', type=str, dest='gpgbinary', default="gpg",
+            help="Path to the gpg binary you wish to use"
         )
 
         self.add_argument(
-            '-x', '--kpx',
-            action='store_true',
-            help="Use this option to format the CSV for KeePassXC",
-            dest='kpx_format',
+            '-f', '--format', type=str, dest='csv_format',
+            help="Use this option to format the CSV KeePassXC [KPX], Lastpass [LP]",
         )
 
 
